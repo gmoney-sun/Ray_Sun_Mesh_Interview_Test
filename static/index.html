@@ -49,7 +49,6 @@
     margin-top: 1rem;
   }
   .btn-primary { background: var(--accent); color: white; }
-  .btn-secondary { background: #2a2e37; color: var(--text); }
   button:disabled { opacity: .5; cursor: not-allowed; }
   .pill {
     display: inline-block;
@@ -73,18 +72,21 @@
 <body>
 <div class="wrap">
   <h1>👟 Sneaker Checkout</h1>
-  <p class="sub">Powered by <strong>Mesh</strong> — Sandbox environment</p >
+  <p class="sub">Powered by <strong>Mesh</strong> — Sandbox environment</p>
 
   <div class="card">
     <span class="pill">Order summary</span>
     <div class="product">
-     <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=200&h=200&fit=crop" alt="shoes" />
+      <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=200&h=200&fit=crop" alt="shoes" />
+      <div>
         <div class="name">Classic Runner Sneakers</div>
         <div class="price">$50.00 USDC</div>
       </div>
     </div>
-    <button id="connect-btn" class="btn-primary">Pay with Coinbase</button>
-    <button id="return-btn" class="btn-secondary">I'm a returning customer</button>
+
+    <button id="connect-btn" class="btn-primary">Connect Coinbase</button>
+    <button id="pay-btn" class="btn-primary hidden">Proceed to Pay $50</button>
+
     <div id="connect-status" class="status"></div>
   </div>
 
@@ -92,7 +94,7 @@
     <span class="pill">Coinbase portfolio</span>
     <div id="portfolio-summary" class="status"></div>
     <table id="portfolio-table">
-      <thead><tr><th>Asset</th><th>Amount</th><th>USD Value</th></tr></thead>
+      <thead><tr><th>Asset</th><th>Amount</th><th>Est. Value</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -107,7 +109,7 @@
   import { createLink } from "https://esm.sh/@meshconnect/web-link-sdk@2";
 
   const connectBtn = document.getElementById("connect-btn");
-  const returnBtn = document.getElementById("return-btn");
+  const payBtn = document.getElementById("pay-btn");
   const connectStatus = document.getElementById("connect-status");
   const portfolioCard = document.getElementById("portfolio-card");
   const portfolioSummary = document.getElementById("portfolio-summary");
@@ -122,7 +124,7 @@
 
   function setButtonsDisabled(disabled) {
     connectBtn.disabled = disabled;
-    returnBtn.disabled = disabled;
+    payBtn.disabled = disabled;
   }
 
   async function getClientId() {
@@ -131,15 +133,14 @@
     return data.clientId;
   }
 
-  async function fetchLinkToken() {
+  async function fetchLinkToken(includeTransfer) {
     const res = await fetch("/api/link-token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: "shoe-shopper-demo-user" }),
+      body: JSON.stringify({ userId: "shoe-shopper-demo-user", includeTransfer }),
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
-    // Mesh wraps the token in { content: { linkToken } }
     return data.content.linkToken;
   }
 
@@ -161,7 +162,7 @@
         brokerType: payload.accessToken.brokerType,
       }),
     });
-    if (!res.ok) console.error("[return-user] save-token failed", res.status);
+    if (!res.ok) console.error("[save-token] failed", res.status);
   }
 
   async function loadPortfolio(accessToken, brokerType) {
@@ -175,23 +176,17 @@
     portfolioCard.classList.remove("hidden");
     portfolioTableBody.innerHTML = "";
 
-    // Extract cryptocurrencyPositions from holdings response
     const assets = data?.holdings?.content?.cryptocurrencyPositions ?? [];
-
-    // Get total portfolio value from value response
     const totalValue = data?.value?.content?.cryptocurrenciesValue ?? 0;
 
-    // Calculate estimated value per asset as (amount * costBasis)
     let estimatedTotal = 0;
     const assetValues = {};
-
     for (const asset of assets) {
       const estValue = (asset.amount ?? 0) * (asset.costBasis ?? 0);
       estimatedTotal += estValue;
       assetValues[asset.symbol] = estValue;
     }
 
-    // Render each asset in the table
     for (const asset of assets) {
       const estValue = assetValues[asset.symbol];
       const tr = document.createElement("tr");
@@ -203,7 +198,6 @@
       portfolioTableBody.appendChild(tr);
     }
 
-    // Display portfolio summary with actual total value from Mesh API
     portfolioSummary.textContent = assets.length
       ? `Portfolio value: $${totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD (${assets.length} assets)`
       : "No holdings found.";
@@ -213,20 +207,20 @@
   let currentAccessToken = null;
   let currentBrokerType = null;
 
-  // forceReturnUser=true  -> "I'm a returning customer" button: must find a saved token, or bail with a message
-  // forceReturnUser=false -> "Pay with Coinbase" button: always shows a fresh login, ignoring any saved token
-  async function startCheckout(forceReturnUser) {
+
+  async function startCheckout(mode) {
     setButtonsDisabled(true);
     setStatus(connectStatus, "Preparing secure Link session…");
 
     try {
-      const [clientId, linkToken] = await Promise.all([getClientId(), fetchLinkToken()]);
+      const includeTransfer = mode === "pay";
+      const [clientId, linkToken] = await Promise.all([getClientId(), fetchLinkToken(includeTransfer)]);
 
       let accessTokens = [];
-      if (forceReturnUser) {
+      if (mode === "pay") {
         const saved = await fetchSavedToken();
         if (!saved) {
-          setStatus(connectStatus, "No saved connection found — try 'Pay with Coinbase' first.", "bad");
+          setStatus(connectStatus, "No saved connection found — click 'Connect Coinbase' first.", "bad");
           setButtonsDisabled(false);
           return;
         }
@@ -237,9 +231,6 @@
           accountId: "",
           accountName: "",
         }];
-        console.log("[return-user] using saved token:", saved);
-      } else {
-        console.log("[return-user] forcing fresh login (ignoring any saved token)");
       }
 
       meshLink = createLink({
@@ -251,19 +242,25 @@
         accessTokens,
         onIntegrationConnected: (payload) => {
           setStatus(connectStatus, `Connected to ${payload.accessToken.brokerName || payload.accessToken.brokerType}.`, "good");
+
           const accessToken = payload.accessToken.accountTokens?.[0]?.accessToken;
           const brokerType = payload.accessToken.brokerType;
           currentAccessToken = accessToken;
           currentBrokerType = brokerType;
+
           loadPortfolio(accessToken, brokerType);
           saveToken(payload);
+
+          if (mode === "connect") {
+            payBtn.classList.remove("hidden");
+            meshLink.closeLink();
+          }
         },
         onTransferFinished: (transferData) => {
           debugCard.classList.remove("hidden");
           debugJson.textContent = JSON.stringify(transferData, null, 2);
           if (transferData.status === "success") {
             setStatus(connectStatus, "✅ Payment sent! $50 USDC transferred on Ethereum.", "good");
-            // Refresh portfolio after successful payment
             if (currentAccessToken && currentBrokerType) {
               loadPortfolio(currentAccessToken, currentBrokerType);
             }
@@ -288,8 +285,8 @@
     }
   }
 
-  connectBtn.addEventListener("click", () => startCheckout(false));
-  returnBtn.addEventListener("click", () => startCheckout(true));
+  connectBtn.addEventListener("click", () => startCheckout("connect"));
+  payBtn.addEventListener("click", () => startCheckout("pay"));
 </script>
 </body>
 </html>
