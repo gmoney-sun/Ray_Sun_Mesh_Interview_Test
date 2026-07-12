@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sneaker Checkout — Pay with Coinbase (via Mesh)</title>
+<style>
+  :root {
+    --bg: #0b0c10;
+    --card: #16181d;
+    --accent: #5b8def;
+    --text: #eaeaea;
+    --muted: #9aa0a6;
+    --good: #3ecf8e;
+    --bad: #e5534b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 2rem 1rem;
+    display: flex;
+    justify-content: center;
+  }
+  .wrap { width: 100%; max-width: 560px; }
+  h1 { font-size: 1.4rem; margin-bottom: .25rem; }
+  .sub { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; }
+  .card {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 1.5rem;
+    margin-bottom: 1.25rem;
+    border: 1px solid #23262d;
+  }
+  .product { display: flex; gap: 1rem; align-items: center; }
+  .product img { width: 84px; height: 84px; border-radius: 10px; object-fit: cover; background: #222; }
+  .product .name { font-weight: 600; }
+  .product .price { color: var(--accent); font-weight: 700; font-size: 1.2rem; margin-top: .25rem; }
+  button {
+    width: 100%;
+    padding: .9rem 1rem;
+    border-radius: 10px;
+    border: none;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 1rem;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-secondary { background: #2a2e37; color: var(--text); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .pill {
+    display: inline-block;
+    font-size: .75rem;
+    padding: .2rem .6rem;
+    border-radius: 999px;
+    background: #1e2530;
+    color: var(--muted);
+    margin-bottom: .5rem;
+  }
+  .status { font-size: .9rem; margin-top: .75rem; color: var(--muted); }
+  .status.good { color: var(--good); }
+  .status.bad { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; margin-top: .5rem; }
+  th, td { text-align: left; padding: .4rem 0; font-size: .9rem; border-bottom: 1px solid #23262d; }
+  th { color: var(--muted); font-weight: 500; }
+  .hidden { display: none; }
+  pre { white-space: pre-wrap; word-break: break-word; font-size: .75rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>👟 Sneaker Checkout</h1>
+  <p class="sub">Powered by <strong>Mesh</strong> — Sandbox environment</p >
+
+  <div class="card">
+    <span class="pill">Order summary</span>
+    <div class="product">
+     <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=200&h=200&fit=crop" alt="shoes" />
+        <div class="name">Classic Runner Sneakers</div>
+        <div class="price">$50.00 USDC</div>
+      </div>
+    </div>
+    <button id="connect-btn" class="btn-primary">Pay with Coinbase</button>
+    <button id="return-btn" class="btn-secondary">I'm a returning customer</button>
+    <div id="connect-status" class="status"></div>
+  </div>
+
+  <div id="portfolio-card" class="card hidden">
+    <span class="pill">Coinbase portfolio</span>
+    <div id="portfolio-summary" class="status"></div>
+    <table id="portfolio-table">
+      <thead><tr><th>Asset</th><th>Amount</th><th>USD Value</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="debug-card" class="card hidden">
+    <span class="pill">Last transfer event (debug)</span>
+    <pre id="debug-json"></pre>
+  </div>
+</div>
+
+<script type="module">
+  import { createLink } from "https://esm.sh/@meshconnect/web-link-sdk@2";
+
+  const connectBtn = document.getElementById("connect-btn");
+  const returnBtn = document.getElementById("return-btn");
+  const connectStatus = document.getElementById("connect-status");
+  const portfolioCard = document.getElementById("portfolio-card");
+  const portfolioSummary = document.getElementById("portfolio-summary");
+  const portfolioTableBody = document.querySelector("#portfolio-table tbody");
+  const debugCard = document.getElementById("debug-card");
+  const debugJson = document.getElementById("debug-json");
+
+  function setStatus(el, text, kind) {
+    el.textContent = text;
+    el.className = "status" + (kind ? " " + kind : "");
+  }
+
+  function setButtonsDisabled(disabled) {
+    connectBtn.disabled = disabled;
+    returnBtn.disabled = disabled;
+  }
+
+  async function getClientId() {
+    const res = await fetch("/api/config");
+    const data = await res.json();
+    return data.clientId;
+  }
+
+  async function fetchLinkToken() {
+    const res = await fetch("/api/link-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: "shoe-shopper-demo-user" }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    // Mesh wraps the token in { content: { linkToken } }
+    return data.content.linkToken;
+  }
+
+  async function fetchSavedToken() {
+    const res = await fetch("/api/saved-token?userId=shoe-shopper-demo-user");
+    const { saved } = await res.json();
+    return saved;
+  }
+
+  async function saveToken(payload) {
+    const tokenId = payload.accessToken.accountTokens?.[0]?.tokenId;
+    if (!tokenId) return;
+    const res = await fetch("/api/save-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: "shoe-shopper-demo-user",
+        tokenId,
+        brokerType: payload.accessToken.brokerType,
+      }),
+    });
+    if (!res.ok) console.error("[return-user] save-token failed", res.status);
+  }
+
+  async function loadPortfolio(accessToken, brokerType) {
+    const res = await fetch("/api/holdings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authToken: accessToken, type: brokerType }),
+    });
+    const data = await res.json();
+
+    portfolioCard.classList.remove("hidden");
+    portfolioTableBody.innerHTML = "";
+
+    // Extract cryptocurrencyPositions from holdings response
+    const assets = data?.holdings?.content?.cryptocurrencyPositions ?? [];
+
+    // Get total portfolio value from value response
+    const totalValue = data?.value?.content?.cryptocurrenciesValue ?? 0;
+
+    // Calculate estimated value per asset as (amount * costBasis)
+    let estimatedTotal = 0;
+    const assetValues = {};
+
+    for (const asset of assets) {
+      const estValue = (asset.amount ?? 0) * (asset.costBasis ?? 0);
+      estimatedTotal += estValue;
+      assetValues[asset.symbol] = estValue;
+    }
+
+    // Render each asset in the table
+    for (const asset of assets) {
+      const estValue = assetValues[asset.symbol];
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><strong>${asset.symbol}</strong> ${asset.name}</td>
+        <td>${(asset.amount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+        <td>$${estValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+      `;
+      portfolioTableBody.appendChild(tr);
+    }
+
+    // Display portfolio summary with actual total value from Mesh API
+    portfolioSummary.textContent = assets.length
+      ? `Portfolio value: $${totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD (${assets.length} assets)`
+      : "No holdings found.";
+  }
+
+  let meshLink;
+  let currentAccessToken = null;
+  let currentBrokerType = null;
+
+  // forceReturnUser=true  -> "I'm a returning customer" button: must find a saved token, or bail with a message
+  // forceReturnUser=false -> "Pay with Coinbase" button: always shows a fresh login, ignoring any saved token
+  async function startCheckout(forceReturnUser) {
+    setButtonsDisabled(true);
+    setStatus(connectStatus, "Preparing secure Link session…");
+
+    try {
+      const [clientId, linkToken] = await Promise.all([getClientId(), fetchLinkToken()]);
+
+      let accessTokens = [];
+      if (forceReturnUser) {
+        const saved = await fetchSavedToken();
+        if (!saved) {
+          setStatus(connectStatus, "No saved connection found — try 'Pay with Coinbase' first.", "bad");
+          setButtonsDisabled(false);
+          return;
+        }
+        accessTokens = [{
+          accessToken: saved.tokenId,
+          brokerType: saved.brokerType,
+          brokerName: "",
+          accountId: "",
+          accountName: "",
+        }];
+        console.log("[return-user] using saved token:", saved);
+      } else {
+        console.log("[return-user] forcing fresh login (ignoring any saved token)");
+      }
+
+      meshLink = createLink({
+        clientId,
+        renderType: "overlay",
+        theme: "dark",
+        language: "system",
+        displayFiatCurrency: "USD",
+        accessTokens,
+        onIntegrationConnected: (payload) => {
+          setStatus(connectStatus, `Connected to ${payload.accessToken.brokerName || payload.accessToken.brokerType}.`, "good");
+          const accessToken = payload.accessToken.accountTokens?.[0]?.accessToken;
+          const brokerType = payload.accessToken.brokerType;
+          currentAccessToken = accessToken;
+          currentBrokerType = brokerType;
+          loadPortfolio(accessToken, brokerType);
+          saveToken(payload);
+        },
+        onTransferFinished: (transferData) => {
+          debugCard.classList.remove("hidden");
+          debugJson.textContent = JSON.stringify(transferData, null, 2);
+          if (transferData.status === "success") {
+            setStatus(connectStatus, "✅ Payment sent! $50 USDC transferred on Ethereum.", "good");
+            // Refresh portfolio after successful payment
+            if (currentAccessToken && currentBrokerType) {
+              loadPortfolio(currentAccessToken, currentBrokerType);
+            }
+          } else {
+            setStatus(connectStatus, `Transfer ended with status: ${transferData.status}`, "bad");
+          }
+        },
+        onExit: (error) => {
+          setButtonsDisabled(false);
+          if (error) setStatus(connectStatus, `Closed: ${error}`, "bad");
+        },
+        onEvent: (ev) => {
+          console.log("[Mesh event]", ev);
+        },
+      });
+
+      meshLink.openLink(linkToken);
+    } catch (err) {
+      console.error(err);
+      setStatus(connectStatus, "Something went wrong starting Link. See console.", "bad");
+      setButtonsDisabled(false);
+    }
+  }
+
+  connectBtn.addEventListener("click", () => startCheckout(false));
+  returnBtn.addEventListener("click", () => startCheckout(true));
+</script>
+</body>
+</html>

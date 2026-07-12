@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Mesh SDK Playground</title>
+<style>
+  body {
+    background: #0b0c10;
+    color: #eaeaea;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 2rem;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  h1 { font-family: -apple-system, sans-serif; font-size: 1.3rem; }
+  p.sub { color: #9aa0a6; font-family: -apple-system, sans-serif; margin-top: -0.5rem; }
+  button {
+    background: #5b8def;
+    color: white;
+    border: none;
+    padding: .7rem 1.2rem;
+    border-radius: 8px;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: -apple-system, sans-serif;
+    margin-right: .5rem;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #log {
+    margin-top: 1.5rem;
+    background: #16181d;
+    border: 1px solid #23262d;
+    border-radius: 10px;
+    padding: 1rem;
+    font-size: .8rem;
+    height: 480px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .entry { margin-bottom: .9rem; border-left: 3px solid #5b8def; padding-left: .6rem; }
+  .entry .tag { color: #5b8def; font-weight: 700; }
+  .entry .time { color: #6b7280; font-size: .7rem; }
+  .entry pre { margin: .3rem 0 0; color: #c9cdd3; }
+</style>
+</head>
+<body>
+<h1>🧪 Mesh SDK Playground</h1>
+<p class="sub">Raw createLink() + openLink() — every callback logged live, nothing else.</p>
+
+<button id="get-token-btn">1. Get link token</button>
+<button id="open-link-btn" disabled>2. Open Link (SDK)</button>
+
+<div id="log"></div>
+
+<script type="module">
+  import { createLink } from "https://esm.sh/@meshconnect/web-link-sdk@2";
+
+  const logEl = document.getElementById("log");
+  const getTokenBtn = document.getElementById("get-token-btn");
+  const openLinkBtn = document.getElementById("open-link-btn");
+
+  let linkToken = null;
+  let clientId = null;
+
+  function log(tag, data) {
+    const entry = document.createElement("div");
+    entry.className = "entry";
+    const time = new Date().toLocaleTimeString();
+    entry.innerHTML = `<span class="tag">${tag}</span> <span class="time">${time}</span><pre>${
+      typeof data === "string" ? data : JSON.stringify(data, null, 2)
+    }</pre>`;
+    logEl.appendChild(entry);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  getTokenBtn.addEventListener("click", async () => {
+    log("→ fetching", "/api/config and /api/link-token …");
+    try {
+      const [cfgRes, tokenRes] = await Promise.all([
+        fetch("/api/config"),
+        fetch("/api/link-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: "sdk-playground-user" }),
+        }),
+      ]);
+      const cfg = await cfgRes.json();
+      const tokenData = await tokenRes.json();
+
+      clientId = cfg.clientId;
+      linkToken = tokenData.content.linkToken;
+
+      log("✅ linkToken received", tokenData);
+      openLinkBtn.disabled = false;
+    } catch (err) {
+      log("❌ error", String(err));
+    }
+  });
+  
+ openLinkBtn.addEventListener("click", async () => {   // ← added "async"
+  if (!linkToken) return;
+
+  // NEW: check if we have a saved token for return-user experience
+  const savedRes = await fetch("/api/saved-token?userId=sdk-playground-user");
+  const { saved } = await savedRes.json();
+  const accessTokens = saved
+    ? [{ accessToken: saved.tokenId, brokerType: saved.brokerType, brokerName: "", accountId: "", accountName: "" }]
+    : [];
+  log("🔎 saved token lookup", saved || "none found — will show login screen");
+
+  log("→ createLink()", "initializing SDK instance with callbacks…");
+
+  const meshLink = createLink({
+    clientId,
+    renderType: "overlay",
+    theme: "dark",
+    accessTokens,   // ← NEW
+    onEvent: (event) => log("📡 onEvent", event),
+    onIntegrationConnected: (payload) => {
+      log("🔗 onIntegrationConnected", payload);
+
+      const tokenId = payload.accessToken.accountTokens?.[0]?.tokenId;
+      if (tokenId) {
+        fetch("/api/save-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: "sdk-playground-user",
+            tokenId,
+            brokerType: payload.accessToken.brokerType,
+          }),
+        }).then((res) => {
+          if (res.ok) log("💾 saved token", { tokenId });
+          else log("❌ save-token failed", `status ${res.status}`);
+        });
+      }
+    },
+    onTransferFinished: (data) => log("💸 onTransferFinished", data),
+    onExit: (error) => log("🚪 onExit", error || "(closed cleanly, no error)"),
+  });
+
+  log("→ openLink()", "launching the overlay with the linkToken…");
+  meshLink.openLink(linkToken);
+});
+</script>
+</body>
+</html>
