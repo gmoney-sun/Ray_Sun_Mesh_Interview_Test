@@ -36,6 +36,7 @@ PAYMENT_SYMBOL = "USDC"
 PAYMENT_AMOUNT_USD = 50  # "$50 pair of shoes"
 SAVED_TOKENS = {}
 
+
 def mesh_headers():
     return {
         "Content-Type": "application/json",
@@ -71,13 +72,16 @@ def create_link_token():
     """
     body = request.get_json(silent=True) or {}
     user_id = body.get("userId", "shoe-shopper-demo-user")
-    saved = SAVED_TOKENS.get(user_id)  # NEW
-    
+    include_transfer = body.get("includeTransfer", True)  # NEW
+
     payload = {
         "userId": user_id,
         "restrictMultipleAccounts": True,
         "integrationId": COINBASE_INTEGRATION_ID,  # jump straight to Coinbase
-        "transferOptions": {
+    }
+
+    if include_transfer:  # NEW — only attach transfer config when actually paying
+        payload["transferOptions"] = {
             "transactionId": f"shoes-{user_id}",
             "transferType": "deposit",
             "isInclusiveFeeEnabled": False,
@@ -89,8 +93,7 @@ def create_link_token():
                     "address": DEST_WALLET_ADDRESS,
                 }
             ],
-        },
-    }
+        }
 
     resp = requests.post(
         f"{MESH_BASE_URL}/api/v1/linktoken", headers=mesh_headers(), json=payload
@@ -125,12 +128,15 @@ def get_holdings():
     value_resp = requests.post(
         f"{MESH_BASE_URL}/api/v1/holdings/value", headers=mesh_headers(), json=payload
     )
+
     return jsonify(
         {
             "holdings": holdings_resp.json() if holdings_resp.ok else {"error": holdings_resp.text},
             "value": value_resp.json() if value_resp.ok else {"error": value_resp.text},
         }
     )
+
+
 @app.post("/api/save-token")
 def save_token():
     """Frontend calls this right after onIntegrationConnected, so we can
@@ -146,11 +152,13 @@ def save_token():
     SAVED_TOKENS[user_id] = {"tokenId": token_id, "brokerType": broker_type}
     return jsonify({"saved": True})
 
+
 @app.get("/api/saved-token")
 def get_saved_token():
     user_id = request.args.get("userId")
     saved = SAVED_TOKENS.get(user_id)
     return jsonify({"saved": saved})
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5001)
