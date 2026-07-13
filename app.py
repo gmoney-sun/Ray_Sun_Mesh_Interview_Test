@@ -83,7 +83,7 @@ def create_link_token():
     if include_transfer:  
         payload["transferOptions"] = {
             "transactionId": f"shoes-{user_id}",
-            "transferType": "deposit",
+            "transferType": "payment",
             "isInclusiveFeeEnabled": False,
             "amountInFiat": PAYMENT_AMOUNT_USD,
             "toAddresses": [
