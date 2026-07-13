@@ -24,7 +24,7 @@ MESH_BASE_URL = os.environ.get(
 # straight to the Coinbase login screen instead of showing the full catalog.
 # Leave blank in .env if you'd rather let the user pick from the catalog.
 COINBASE_INTEGRATION_ID = os.environ.get(
-    "COINBASE_INTEGRATION_ID", "47624467-e52e-4938-a41a-7926b6c27acf"
+    "COINBASE_INTEGRATION_ID", "721a5035-029f-4e05-bf3c-009da2fe381b"
 )
 
 # Destination wallet + demo payment amount from the take-home spec.
@@ -72,7 +72,7 @@ def create_link_token():
     """
     body = request.get_json(silent=True) or {}
     user_id = body.get("userId", "shoe-shopper-demo-user")
-    include_transfer = body.get("includeTransfer", True)  # NEW
+    include_transfer = body.get("includeTransfer", True)  
 
     payload = {
         "userId": user_id,
@@ -80,7 +80,7 @@ def create_link_token():
         "integrationId": COINBASE_INTEGRATION_ID,  # jump straight to Coinbase
     }
 
-    if include_transfer:  # NEW — only attach transfer config when actually paying
+    if include_transfer:  
         payload["transferOptions"] = {
             "transactionId": f"shoes-{user_id}",
             "transferType": "deposit",
