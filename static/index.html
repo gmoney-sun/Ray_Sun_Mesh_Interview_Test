@@ -94,7 +94,7 @@
     <span class="pill">Coinbase portfolio</span>
     <div id="portfolio-summary" class="status"></div>
     <table id="portfolio-table">
-      <thead><tr><th>Asset</th><th>Amount</th><th>Est. Value</th></tr></thead>
+      <thead><tr><th>Asset</th><th>Amount</th><th>Market Value</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -177,29 +177,23 @@
     portfolioTableBody.innerHTML = "";
 
     const assets = data?.holdings?.content?.cryptocurrencyPositions ?? [];
-    const totalValue = data?.value?.content?.cryptocurrenciesValue ?? 0;
 
     let estimatedTotal = 0;
-    const assetValues = {};
     for (const asset of assets) {
-      const estValue = (asset.amount ?? 0) * (asset.costBasis ?? 0);
-      estimatedTotal += estValue;
-      assetValues[asset.symbol] = estValue;
-    }
+      const value = asset.marketValue ?? (asset.amount ?? 0) * (asset.lastPrice ?? 0);
+      estimatedTotal += value;
 
-    for (const asset of assets) {
-      const estValue = assetValues[asset.symbol];
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td><strong>${asset.symbol}</strong> ${asset.name}</td>
         <td>${(asset.amount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-        <td>$${estValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+        <td>$${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
       `;
       portfolioTableBody.appendChild(tr);
     }
 
     portfolioSummary.textContent = assets.length
-      ? `Portfolio value: $${totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD (${assets.length} assets)`
+      ? `Portfolio value: $${estimatedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD (${assets.length} assets)`
       : "No holdings found.";
   }
 
@@ -207,7 +201,10 @@
   let currentAccessToken = null;
   let currentBrokerType = null;
 
-
+  // mode: "connect" -> Connect Coinbase: login only, no transfer screen; closes itself once
+  //                    connected, then reveals the "Proceed to Pay" button and shows portfolio.
+  // mode: "pay"      -> Proceed to Pay: uses the token we just connected (via saved-token lookup)
+  //                    to skip login entirely and jump straight into the $50 transfer screen.
   async function startCheckout(mode) {
     setButtonsDisabled(true);
     setStatus(connectStatus, "Preparing secure Link session…");
@@ -253,7 +250,7 @@
 
           if (mode === "connect") {
             payBtn.classList.remove("hidden");
-            meshLink.closeLink();
+            meshLink.closeLink();   // force-close: no transfer to complete, so it won't auto-close
           }
         },
         onTransferFinished: (transferData) => {
