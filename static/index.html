@@ -208,7 +208,7 @@
     setButtonsDisabled(true);
     setStatus(connectStatus, "Preparing secure Link session…");
 
-    let sessionCompleted = false;   // NEW — tracks whether this session actually finished its job
+    let sessionCompleted = false;   
 
     try {
       const includeTransfer = mode === "pay";
@@ -251,7 +251,7 @@
 
           if (mode === "connect") {
             payBtn.classList.remove("hidden");
-            sessionCompleted = true;   // we're the ones closing it right after success — no need to infer
+            sessionCompleted = true;   
             meshLink.closeLink();   // force-close: no transfer to complete, so it won't auto-close
           }
         },
@@ -260,6 +260,7 @@
           debugJson.textContent = JSON.stringify(transferData, null, 2);
           if (transferData.status === "success") {
             setStatus(connectStatus, "✅ Payment sent! $50 USDC transferred on Ethereum.", "good");
+            sessionCompleted = true;   
             if (currentAccessToken && currentBrokerType) {
               loadPortfolio(currentAccessToken, currentBrokerType);
             }
@@ -280,12 +281,6 @@
         },
         onEvent: (ev) => {
           console.log("[Mesh event]", ev);
-          if (ev.type === "close" && !sessionCompleted) {
-            const successPage = mode === "pay" ? "transferExecutedPage" : "integrationConnectedPage";
-            if (ev.page === successPage) {
-              sessionCompleted = true;   // pay mode: Mesh's documented close-event page field confirms success
-            }
-          }
         },
       });
 
