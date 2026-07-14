@@ -177,11 +177,10 @@
     portfolioTableBody.innerHTML = "";
 
     const assets = data?.holdings?.content?.cryptocurrencyPositions ?? [];
+    const cryptoValue = data?.value?.content?.cryptocurrenciesValue ?? 0;
 
-    let estimatedTotal = 0;
     for (const asset of assets) {
       const value = asset.marketValue ?? (asset.amount ?? 0) * (asset.lastPrice ?? 0);
-      estimatedTotal += value;
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -193,7 +192,7 @@
     }
 
     portfolioSummary.textContent = assets.length
-      ? `Portfolio value: $${estimatedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD (${assets.length} assets)`
+      ? `Portfolio value: $${cryptoValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD (${assets.length} assets)`
       : "No holdings found.";
   }
 
