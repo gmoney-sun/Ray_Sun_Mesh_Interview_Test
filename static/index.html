@@ -208,6 +208,8 @@
     setButtonsDisabled(true);
     setStatus(connectStatus, "Preparing secure Link session…");
 
+    let sessionCompleted = false;   // NEW — tracks whether this session actually finished its job
+
     try {
       const includeTransfer = mode === "pay";
       const [clientId, linkToken] = await Promise.all([getClientId(), fetchLinkToken(includeTransfer)]);
@@ -249,6 +251,7 @@
 
           if (mode === "connect") {
             payBtn.classList.remove("hidden");
+            sessionCompleted = true;   // we're the ones closing it right after success — no need to infer
             meshLink.closeLink();   // force-close: no transfer to complete, so it won't auto-close
           }
         },
@@ -266,10 +269,23 @@
         },
         onExit: (error) => {
           setButtonsDisabled(false);
-          if (error) setStatus(connectStatus, `Closed: ${error}`, "bad");
+          if (error) {
+            setStatus(connectStatus, `Closed: ${error}`, "bad");
+          } else if (!sessionCompleted) {
+            const reminder = mode === "connect"
+              ? "You'll need to connect your Coinbase account to continue — click 'Connect Coinbase' when you're ready."
+              : "Your $50 payment wasn't completed — click 'Proceed to Pay $50' to finish your purchase.";
+            setStatus(connectStatus, reminder, "bad");
+          }
         },
         onEvent: (ev) => {
           console.log("[Mesh event]", ev);
+          if (ev.type === "close" && !sessionCompleted) {
+            const successPage = mode === "pay" ? "transferExecutedPage" : "integrationConnectedPage";
+            if (ev.page === successPage) {
+              sessionCompleted = true;   // pay mode: Mesh's documented close-event page field confirms success
+            }
+          }
         },
       });
 
