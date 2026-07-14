@@ -120,7 +120,7 @@ def get_holdings():
     if not auth_token:
         return jsonify({"error": "authToken is required"}), 400
 
-    payload = {"authToken": auth_token, "type": account_type}
+    payload = {"authToken": auth_token, "type": account_type,"includeMarketValue": True}
 
     holdings_resp = requests.post(
         f"{MESH_BASE_URL}/api/v1/holdings/get", headers=mesh_headers(), json=payload
