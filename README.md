@@ -32,7 +32,7 @@ Confirm the $50 transfer
 Assets refresh automatically, showing the new balance
 ```
 
-**Two clicks, two steps: connect first, then pay.** ✨
+**Two clicks, two steps: connect first, then pay.** 
 
 ---
 
