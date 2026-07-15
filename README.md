@@ -32,7 +32,7 @@ Confirm the $50 transfer
 Assets refresh automatically, showing the new balance
 ```
 
-**Two clicks, two steps: connect first, then pay.** 
+**Two clicks, two steps: connect first, then pay.** ✨
 
 ---
 
@@ -158,6 +158,8 @@ GET  /api/saved-token    → Look up a remembered connection
 
 ## Part 5: Four Key Events (SDK Callbacks)
 
+These are functions; the Mesh SDK calls them automatically when something happens.
+
 ### Event 1: User Connected (`onIntegrationConnected`)
 ```
 onIntegrationConnected: (payload) => {
@@ -274,7 +276,10 @@ sanity-checking sandbox credentials before touching any app code.
 
 ### Ideas not yet built, but natural next steps
 
+### Ideas not yet built, but natural next steps
+
 - Swap `SAVED_TOKENS` (in-memory dict) for a real database, so return-user
   tokens survive a server restart
 - Add a webhook listener as the authoritative source for transfer confirmation,
   per Mesh's own guidance — current callbacks are UI-only, by design
+- Switch from renderType: "overlay" to "embedded", so the portfolio and the Mesh UI can be visible side-by-side instead of the overlay covering the whole page — per Mesh's guidance, this is the recommended mode for production web apps.
