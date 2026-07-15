@@ -158,8 +158,6 @@ GET  /api/saved-token    → Look up a remembered connection
 
 ## Part 5: Four Key Events (SDK Callbacks)
 
-These are functions; the Mesh SDK calls them automatically when something happens.
-
 ### Event 1: User Connected (`onIntegrationConnected`)
 ```
 onIntegrationConnected: (payload) => {
