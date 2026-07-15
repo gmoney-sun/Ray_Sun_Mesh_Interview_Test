@@ -276,8 +276,6 @@ sanity-checking sandbox credentials before touching any app code.
 
 ### Ideas not yet built, but natural next steps
 
-### Ideas not yet built, but natural next steps
-
 - Swap `SAVED_TOKENS` (in-memory dict) for a real database, so return-user
   tokens survive a server restart
 - Add a webhook listener as the authoritative source for transfer confirmation,
